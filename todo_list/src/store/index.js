@@ -1,4 +1,6 @@
-// Utilities
-import { createPinia } from 'pinia'
+import { createPinia } from "pinia";
+const pinia = createPinia();
 
-export default createPinia()
+const useStore = pinia.useStore;
+
+export default useStore;

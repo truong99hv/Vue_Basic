@@ -1,10 +1,9 @@
 <template>
   <div class="bg-grey-lighten-4">
-    <v-container style="max-width: 700px">
+    <v-container style="max-width: 700px" :loading="loading">
       <v-text-field
         v-model="newTask"
         label="What are you working on?"
-        variant="solo"
         @keydown.enter="createTask"
       >
         <template v-slot:append-inner>
@@ -30,13 +29,8 @@
         </template>
       </v-text-field>
 
-      <!-- <v-progress-circular
-      v-model="loading"
-      indeterminate
-      class="me-2"
-      v-if="loading"
-    ></v-progress-circular> -->
-      <div v-show="!loading">
+      <!-- v-show="!loading" -->
+      <div>
         <h2 class="text-h4 text-success ps-4">
           Tasks:&nbsp;
           <v-fade-transition leave-absolute>
@@ -47,20 +41,46 @@
         </h2>
 
         <v-divider class="mt-4"></v-divider>
-
-        <v-row class="my-1" align="center">
-          <strong class="mx-4 text-info-darken-2">
-            Remaining: {{ remainingTasks }}
-          </strong>
-
-          <v-divider vertical></v-divider>
-
-          <strong class="mx-4 text-success-darken-2">
-            Completed: {{ completedTasks }}
-          </strong>
-
-          <v-spacer></v-spacer>
-        </v-row>
+        <div class="mt-4 mb-4 d-flex justify-space-between align-center">
+          <v-radio-group
+            inline
+            v-model="filterOption"
+            @change="getTask"
+            color="success"
+            class="d-flex align-self-center"
+          >
+            <v-radio value="1"
+              ><template v-slot:label>
+                <strong class="text-info-darken-2">Remaining</strong>
+              </template></v-radio
+            >
+            <v-radio value="2"
+              ><template v-slot:label>
+                <strong class="text-info-darken-2">Completed</strong>
+              </template></v-radio
+            >
+            <v-radio value="3"
+              ><template v-slot:label>
+                <strong class="text-info-darken-2">All</strong>
+              </template></v-radio
+            >
+          </v-radio-group>
+          <v-card-text>
+            <v-text-field
+              v-model="searchQuery"
+              @keydown.enter="performSearch"
+              density="compact"
+              variant="solo"
+              label="Search"
+              append-inner-icon="mdi-magnify"
+              hide-details
+            ></v-text-field>
+          </v-card-text>
+          <v-btn @click="todoStore.sortText()">
+            <v-icon icon="mdi-sort" color="light-blue-darken-3" />
+            <v-tooltip activator="parent" location="start">Sort</v-tooltip>
+          </v-btn>
+        </div>
 
         <v-divider class="mb-4"></v-divider>
 
@@ -74,9 +94,9 @@
                   <v-checkbox-btn
                     v-model="task.done"
                     color="grey"
+                    @change="statusTask(task)"
                   ></v-checkbox-btn>
                 </template>
-                <!-- @checked="task.done = !task.done" -->
 
                 <v-list-item-title>
                   <span :class="task.done ? 'text-grey' : 'text-primary'">{{
@@ -88,28 +108,79 @@
                   <v-expand-x-transition class="mr-4">
                     <v-icon v-if="task.done" color="success">
                       mdi-check
-                    </v-icon> </v-expand-x-transition
-                  ><v-btn
-                    class="mr-4"
-                    size="small"
-                    color="blue-accent-2"
-                    prepend-icon="$edit"
-                  >
-                    Edit
-                  </v-btn>
+                    </v-icon>
+                  </v-expand-x-transition>
+                  <!-- modal edit -->
+                  <v-col cols="auto">
+                    <v-dialog
+                      transition="dialog-top-transition"
+                      width="768"
+                      content-class="custom-modal"
+                    >
+                      <template v-slot:activator="{ props }">
+                        <v-btn
+                          size="small"
+                          color="blue-accent-2"
+                          prepend-icon="$edit"
+                          v-bind="props"
+                          @click="editTextTask(task.text)"
+                        >
+                          Edit
+                        </v-btn>
+                      </template>
+                      <template v-slot:default="{ isActive }">
+                        <v-card>
+                          <v-toolbar color="blue-accent-2" title="Edit Task"
+                            ><v-icon
+                              size="large"
+                              color="grey-lighten-5"
+                              @click="isActive.value = false"
+                              icon="$delete"
+                              class="mr-4"
+                            ></v-icon
+                          ></v-toolbar>
 
+                          <v-card-text>
+                            <div class="text-h2 pa-12">
+                              <v-col cols="12">
+                                <v-text-field
+                                  label="Task"
+                                  hint="Edit Task"
+                                  v-model="this.textEdit"
+                                ></v-text-field>
+                              </v-col>
+                            </div>
+                          </v-card-text>
+                          <v-card-actions class="justify-end">
+                            <v-btn
+                              variant="outlined"
+                              color="success"
+                              @click="editTask(task)"
+                              >Apply</v-btn
+                            >
+
+                            <v-btn
+                              variant="outlined"
+                              @click="isActive.value = false"
+                              >Close</v-btn
+                            >
+                          </v-card-actions>
+                        </v-card>
+                      </template>
+                    </v-dialog>
+                  </v-col>
                   <!-- modal delete -->
                   <v-col cols="auto">
                     <v-dialog
                       transition="dialog-top-transition"
-                      width="auto"
+                      width="576"
                       content-class="custom-modal"
                     >
                       <template v-slot:activator="{ props }">
                         <v-btn
                           size="small"
                           color="red-darken-1"
-                          prepend-icon="$delete"
+                          prepend-icon="mdi-trash-can-outline"
                           v-bind="props"
                         >
                           Delete
@@ -128,19 +199,26 @@
                           ></v-toolbar>
 
                           <v-card-text>
-                            <div class="text-h2 pa-12">Hello world!</div>
+                            <div class="text-h6">
+                              This will Delete:
+                              <strong
+                                class="text-h5 font-weight-bold text-red-darken-1"
+                                >{{ task.text }}</strong
+                              >
+                            </div>
                           </v-card-text>
                           <v-card-actions class="justify-end">
                             <v-btn
                               color="success"
+                              variant="outlined"
                               class="btn"
                               @click="deleteTask(task)"
                               >Apply</v-btn
                             >
 
                             <v-btn
-                              variant="text"
                               class="btn btn-close"
+                              variant="outlined"
                               @click="isActive.value = false"
                               >Close</v-btn
                             >
@@ -160,11 +238,24 @@
 </template>
 <script>
 import axios from "axios";
+import { useTodoStore } from "@/store/todo";
 export default {
+  setup() {
+    const todoStore = useTodoStore();
+    return { todoStore };
+  },
   data: () => ({
     tasks: [],
     newTask: "",
     loading: false,
+    textEdit: "",
+    filterOption: "3",
+    sortOrder: 0,
+    sortOptions: [
+      { sort: "text", order: "asc" },
+      { sort: "text", order: "desc" },
+    ],
+    searchQuery: "",
   }),
 
   computed: {
@@ -181,10 +272,22 @@ export default {
 
   mounted() {
     this.getTask();
-    // this.delayedGetTask();
   },
 
   methods: {
+    statusTask(task) {
+      axios
+        .put(import.meta.env.VITE_END_POINT + `/todos/${task.id}`, {
+          text: task.text,
+          done: task.done,
+        })
+        .then(() => {
+          this.getTask();
+        })
+        .catch((error) => {
+          console.log(error);
+        });
+    },
     createTask() {
       this.loading = true;
       if (this.newTask.trim() === "") {
@@ -195,8 +298,7 @@ export default {
           text: this.newTask,
           done: false,
         })
-        .then((res) => {
-          console.log(res);
+        .then(() => {
           this.newTask = "";
           this.getTask();
           this.loading = false;
@@ -208,11 +310,36 @@ export default {
     },
     getTask() {
       this.loading = true;
+
+      let endpoint = import.meta.env.VITE_END_POINT + "/todos";
+      const queryParams = [];
+
+      if (this.filterOption === "1") {
+        queryParams.push("done=false");
+      } else if (this.filterOption === "2") {
+        queryParams.push("done=true");
+      }
+
+      if (this.sortOrder !== 0) {
+        const { sort, order } = this.sortOptions[this.sortOrder - 1];
+        queryParams.push(`_sort=${sort}&_order=${order}`);
+      }
+
+      if (this.searchQuery) {
+        queryParams.push(`q=${this.searchQuery}`);
+      }
+
+      if (queryParams.length > 0) {
+        endpoint += "?" + queryParams.join("&");
+      }
+
       axios
-        .get(import.meta.env.VITE_END_POINT + "/todos")
+        .get(endpoint)
         .then((res) => {
           this.tasks = res.data;
-          this.tasks.sort((a, b) => b.id - a.id);
+          if (this.sortOrder === 0) {
+            this.tasks.sort((a, b) => b.id - a.id);
+          }
           this.loading = false;
         })
         .catch((error) => {
@@ -221,23 +348,43 @@ export default {
         });
     },
 
-    // delayedGetTask() {
-    //   this.loading = true;
-    //   setTimeout(() => {
-    //     this.getTask();
-    //   }, 2000);
-    // },
-    deleteTask(task) {
-      console.log("task", task.id);
+    editTextTask(text) {
+      this.textEdit = text;
+    },
+
+    editTask(task) {
       axios
-        .delete(import.meta.env.VITE_END_POINT + `/todos/${task.id}`)
-        .then((res) => {
-          console.log(res);
-          this.getTask(); // Load lại danh sách todos sau khi xóa
+        .put(import.meta.env.VITE_END_POINT + `/todos/${task.id}`, {
+          text: this.textEdit,
+          done: task.done,
+        })
+        .then(() => {
+          this.getTask();
+          this.textEdit = "";
         })
         .catch((error) => {
           console.log(error);
         });
+    },
+
+    deleteTask(task) {
+      axios
+        .delete(import.meta.env.VITE_END_POINT + `/todos/${task.id}`)
+        .then(() => {
+          this.getTask();
+        })
+        .catch((error) => {
+          console.log(error);
+        });
+    },
+
+    // changeSortOrder() {
+    //   this.sortOrder = (this.sortOrder + 1) % 3;
+    //   this.getTask();
+    // },
+
+    performSearch() {
+      this.getTask();
     },
   },
 };
@@ -245,11 +392,6 @@ export default {
 
 <style>
 .custom-modal {
-  top: 10%; /* Điều chỉnh giá trị top để đặt modal ở vị trí mong muốn */
-}
-.btn {
-  border: 1px solid #ccc; /* Thêm border cho button */
-  border-radius: 4px; /* Điều chỉnh góc bo tròn của border */
-  padding: 6px 12px; /* Điều chỉnh padding bên trong button */
+  top: 10%;
 }
 </style>
